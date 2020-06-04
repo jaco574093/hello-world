@@ -1,55 +1,90 @@
-# UIScrollView+XSState
+# XSDatabase
 
-给`UIScrollView`、`UITableView`、`UICollectionView`展示状态信息（比如：加载中、数据为空、加载失败、网络异常等）
+面向对象的数据库
 
 ## 为什么重复造轮子
 
-给UITableView展示空数据的有[`DZNEmptyDataSet`](https://github.com/dzenbot/DZNEmptyDataSet)、[`LYEmptyView`](https://github.com/dev-liyang/LYEmptyView)，都为开发者提供了常见的提示UI，但使用起来比较繁琐，需要对其提供的UI进行定制。  
-
-## 设计原则
--  保持精简，源代码只有100行左右。
--  使用方便，提供的接口少。
--  提供扩展，开发者可任意定制任何状态的下的UI。
+数据的增、删、改、查直接面向对象，牺牲一点运行效率，提升开发效率。
 
 ## 使用
 
-### 1.  设置state对应的view
+### 1. 建表
 
-**在设置state前，需要设置state对应的view，<u>state对应的view完全有开发者提供。</u>**  
-提供两种设置view的方式：  
+为了较少复杂度，增加自由度，不直接在模型上建表，而是写sql语句建表。
 
--  **全局设置**  
+- **sql示例代码**
 
-``` objc
-[UIScrollView setClass:[CustomEmptyView class] forState:XSScrollViewStateEmpty];
-[UIScrollView setClass:[CustomLoadingView class] forState:XSScrollViewStateLoading];
-[UIScrollView setClass:[CustomFailedView class] forState:XSScrollViewStateFailed];
+``` sql
+create table TestModel(
+    msgID       INT PRIMARY KEY,    --消息ID
+    content     TEXT,               --消息内容
+    timestamp   INT                 --时间戳
+);
 ```
 
--  **局部设置** 
+- **Objective-C示例代码**
 
 ``` objc
-[_scrollView setView:[CustomEmptyView new] forState:XSScrollViewStateEmpty];
-[_scrollView setView:[CustomLoadingView new] forState:XSScrollViewStateLoading];
-[_scrollView setView:[CustomFailedView new] forState:XSScrollViewStateFailed];
+- (void)create {
+    NSString *path = [[NSBundle mainBundle] pathForResource:@"Test" ofType:@"sql"];
+    NSError *error = nil;
+    NSString *sql = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:&error];
+    
+    XSDatabase *db = [XSDatabase defaultDatabase];
+    [db executeSQL:sql];
+}
 ```
 
-局部设置的优先级高于全局设置。
+### 2. 插入
 
-### 2.  更新state
-
-设置好了state对应的view，更新state，即可显示。
+批量插入的时候注意开启事务
 
 ``` objc
-_scrollView.state = XSScrollViewStateEmpty;
+- (void)insert {
+    XSDatabase *db = [XSDatabase defaultDatabase];
+    [db beginTransaction];
+    for (NSUInteger i = 0; i < 10000; i++) {
+        TestModel *m = [TestModel new];
+        m.msgID = i;
+        m.content = [NSString stringWithFormat:@"第%ld个内容", i];
+        m.timestamp = [[NSDate date] timeIntervalSince1970] + i;
+        [m insert];
+    }
+    [db commitTransaction];
+}
 ```
 
-**如果某种状态正常显示`UIScrollView`、`UITableView`、`UICollectionView`，则该状态不需要设置对应的view**，例如：`XSScrollViewStateNormal`状态下就不需要设置对应的view。  
+### 3. 查询
 
-## 状态
- 
-状态`XSScrollViewState`与程序的实现无关，可任意添加、删除、更名。
+``` objc
+- (void)query {
+    NSArray *models = [TestModel objectsWhere:nil];
+}
+```
 
-## 动画
+### 4. 条件查询
 
-如果自定义的view需要动画，实现`UIScrollViewAnimate`协议即可。
+``` objc
+- (void)query {
+    NSArray *models = [TestModel objectsWhere:@"where msgID=99"];
+}
+```
+
+### 5. 更新
+
+``` objc
+- (void)update {
+    TestModel *m = [TestModel objectsWhere:@"where msgID=99"].firstObject;
+    m.content = @"更新测试";
+    [m update];
+}
+```
+
+### 6. 删除
+
+``` objc
+- (void)delete {
+    TestModel *m = [TestModel objectsWhere:@"where msgID=99"].firstObject;
+    [m delete];
+}
+```
